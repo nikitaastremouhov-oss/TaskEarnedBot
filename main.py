@@ -1,88 +1,90 @@
-import asyncio
-import logging
-from aiogram import Bot, Dispatcher, F, types
-from aiogram.filters import Command
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+import os
+import time
+import requests
 
-# ⚠️ ВСТАВЬ СЮДА СВОЙ ТОКЕН ОТ BOTFATHER В КАВЫЧКАХ:
-BOT_TOKEN = "8480835882:AAGtP6aE0Die8mitp_8S6j3p6VydQay4HpE"
+# Токен зашит прямо в код для удобства
+TOKEN = "8480835882:AAGtP6aE0Die8mitp_8S6j3p6VydQay4HpE"
+URL = f"https://api.telegram.org/bot{TOKEN}/"
 
-# Версия проекта
-BOT_VERSION = "v0.1.0 Beta"
+print("Бот TaskEarned успешно запущен!")
 
-bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher()
+def get_updates(offset=None):
+    url = f"{URL}getUpdates?timeout=30"
+    if offset:
+        url += f"&offset={offset}"
+    try:
+        response = requests.get(url)
+        return response.json()
+    except Exception as e:
+        print(f"Ошибка соединения: {e}")
+        return {}
 
-# Главное меню (кнопки под окном ввода)
-main_keyboard = ReplyKeyboardMarkup(
-    keyboard=[
-        [KeyboardButton(text="👤 ПРОФИЛЬ"), KeyboardButton(text="📋 ЗАДАНИЯ")],
-        [KeyboardButton(text="💰 БАЛАНС"), KeyboardButton(text="🛒 МАГАЗИН")],
-        [KeyboardButton(text="❓ ПОМОЩЬ"), KeyboardButton(text="ℹ️ ВЕРСИЯ")]
-    ],
-    resize_keyboard=True
-)
+def send_message(chat_id, text):
+    url = f"{URL}sendMessage"
+    payload = {
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": "HTML"
+    }
+    try:
+        requests.post(url, json=payload)
+    except Exception as e:
+        print(f"Ошибка отправки сообщения: {e}")
 
-@dp.message(Command("start"))
-async def cmd_start(message: types.Message):
-    await message.answer(
-        f"🎯 **Добро пожаловать в TaskEarned!**\n\n"
-        f"Выполняй простые задания, получай монеты и обменивай их на подарочные карты и игровую валюту!\n\n"
-        f"Используй меню ниже для навигации.",
-        reply_markup=main_keyboard,
-        parse_mode="Markdown"
-    )
+def main():
+    offset = None
+    while True:
+        updates = get_updates(offset)
+        if "result" in updates:
+            for update in updates["result"]:
+                offset = update["update_id"] + 1
+                if "message" in update and "text" in update["message"]:
+                    chat_id = update["message"]["chat"]["id"]
+                    text = update["message"]["text"]
+                    user = update["message"]["from"]
+                    username = user.get("username", "не указан")
+                    user_id = user.get("id")
 
-@dp.message(F.text == "👤 ПРОФИЛЬ")
-@dp.message(Command("profile"))
-async def cmd_profile(message: types.Message):
-    user = message.from_user
-    username = f"@{user.username}" if user.username else user.first_name
-    
-    profile_text = (
-        f"👤 **Профиль**\n"
-        f"🆔 **ID:** `{user.id}`\n"
-        f"👤 **Ник:** {username}\n"
-        f"📊 **Всего выполнено заданий:** 0\n"
-        f"💰 **Текущий баланс:** 0 монет"
-    )
-    await message.answer(profile_text, parse_mode="Markdown")
+                    if text.startswith("/start"):
+                        msg = (
+                            "💼 <b>Добро пожаловать в TaskEarned!</b>\n\n"
+                            "Выполняй простые задания → Получай монеты → Обменивай на подарки.\n\n"
+                            "📋 <b>Доступные команды:</b>\n"
+                            "/start - Начать работу\n"
+                            "/profile - Профиль\n"
+                            "/tasks - Задания\n"
+                            "/balance - Баланс\n"
+                            "/store - Магазин\n"
+                            "/help - Помощь\n\n"
+                            "🚀 Начни зарабатывать уже сегодня!"
+                        )
+                        send_message(chat_id, msg)
 
-@dp.message(F.text == "📋 ЗАДАНИЯ")
-@dp.message(Command("tasks"))
-async def cmd_tasks(message: types.Message):
-    await message.answer("📋 **Доступные задания:**\n\nСейчас идёт подготовка бета-теста! Скоро здесь появятся первые каналы для подписки.")
+                    elif text.startswith("/profile"):
+                        msg = (
+                            f"👤 <b>Ваш профиль:</b>\n\n"
+                            f"🆔 ID: <code>{user_id}</code>\n"
+                            f"@{username}\n\n"
+                            f"📊 Выполнено заданий: 0\n"
+                            f"💰 Баланс: 0 монет\n\n"
+                            f"🏷 Версия бота: v0.1.0 Beta"
+                        )
+                        send_message(chat_id, msg)
 
-@dp.message(F.text == "💰 БАЛАНС")
-@dp.message(Command("balance"))
-async def cmd_balance(message: types.Message):
-    await message.answer("💰 **Твой баланс:** 0 монет.\n\nЗарабатывай монеты, выполняя задания в разделе 📋 **ЗАДАНИЯ**!")
+                    elif text.startswith("/tasks"):
+                        send_message(chat_id, "📌 На данный момент доступных заданий нет. Следите за обновлениями в нашем канале!")
 
-@dp.message(F.text == "🛒 МАГАЗИН")
-@dp.message(Command("store"))
-async def cmd_store(message: types.Message):
-    await message.answer("🛒 **Магазин наград:**\n\n• Подарочные карты Google Play\n• Игровая валюта (Robux, Stars и др.)\n\nВывод станет доступен при наборе минимального баланса.")
+                    elif text.startswith("/balance"):
+                        send_message(chat_id, "💰 Ваш баланс: <b>0 монет</b>.")
 
-@dp.message(F.text == "❓ ПОМОЩЬ")
-@dp.message(Command("help"))
-async def cmd_help(message: types.Message):
-    await message.answer("❓ **Помощь и Поддержка:**\n\nПо всем вопросам пиши администратору: @Colanov")
+                    elif text.startswith("/store"):
+                        send_message(chat_id, "🛒 Магазин подарков и игровой валюты пуст. Скоро здесь появятся товары!")
 
-@dp.message(F.text == "ℹ️ ВЕРСИЯ")
-async def cmd_version(message: types.Message):
-    await message.answer(
-        f"ℹ️ **Информация о системе:**\n\n"
-        f"📌 **Версия:** `{BOT_VERSION}`\n"
-        f"🧪 **Статус:** Закрытое Бета-Тестирование\n"
-        f"🛠 **Разработчик:** @Colanov\n\n"
-        f"Следите за обновлениями в официальном канале!",
-        parse_mode="Markdown"
-    )
+                    elif text.startswith("/help"):
+                        send_message(chat_id, "ℹ️ По всем вопросам обращайтесь к администратору: @Colanov")
 
-async def main():
-    logging.basicConfig(level=logging.INFO)
-    await dp.start_polling(bot)
+        time.sleep(1)
 
 if __name__ == "__main__":
-    asyncio.run(main())
-  
+    main()
+                        
